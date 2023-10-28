@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
+	"net/http"
 	"net/smtp"
 	"os"
 	"strings"
@@ -23,19 +26,49 @@ type EmailTemplate struct {
 	Recipient string
 }
 
+const PORT = 3000
 
 func main() {
-	recipients := []string{"hjackson277@gmail.com"}
+
+	http.HandleFunc("/email", handleEmailRequest)
+
+	err := http.ListenAndServe(
+		fmt.Sprintf(":%d", PORT),
+		nil,
+	)
+
+	if !errors.Is(err, http.ErrServerClosed) {
+		fmt.Printf("Server closed\n")
+	} else if err != nil {
+		log.Fatalf("error running http server: %s\n", err)
+	}
+}
+
+func handleEmailRequest(w http.ResponseWriter, r *http.Request) {
+
+	hasRecipients := r.URL.Query().Has("recipients")
+
+	if !hasRecipients {
+		io.WriteString(w, "No recipients")
+		return
+	}
+
+	recipients := strings.Split(
+		r.URL.Query().Get("recipients"), ",",
+	)
+
 	err := sendEmail(recipients)
 
 	if err != nil {
-		log.Fatalf("Could not send mail. Err: %s", err)
+		log.Printf("Could not send mail. Err: %s", err)
 	}
 
 	fmt.Printf(
 		"Email successfully sent to recipients: %s\n",
 		strings.Join(recipients, ", "),
 	)
+
+	io.WriteString(w, "Email Sent")
 }
 
 func sendEmail(recipients []string) error {
@@ -49,26 +82,26 @@ func sendEmail(recipients []string) error {
 	senderPassword := os.Getenv("SENDER_PASSWORD")
 
 	auth := smtp.PlainAuth(
-        "", 
-        senderEmail, 
-        senderPassword, 
-        "smtp.gmail.com",
-    )
+		"",
+		senderEmail,
+		senderPassword,
+		"smtp.gmail.com",
+	)
 
 	body := new(bytes.Buffer)
 	tmpl, err := template.ParseFiles("./templates/new-order.html")
 
 	if err != nil {
-        log.Fatalf("Failed to parse email template. Err: %s", err)
+		log.Printf("Failed to parse email template. Err: %s", err)
 	}
 
 	err = tmpl.Execute(
-        body, 
-        EmailTemplate{Recipient: recipients[0]},
-    )
+		body,
+		EmailTemplate{Recipient: "noob"},
+	)
 
 	if err != nil {
-        log.Fatalf("Failed to execute email template. Err: %s", err)
+		log.Printf("Failed to execute email template. Err: %s", err)
 	}
 
 	request := Message{
@@ -89,7 +122,7 @@ func sendEmail(recipients []string) error {
 	)
 
 	if err != nil {
-        log.Fatalf("Failed to send email. Err: %s", err)
+		log.Printf("Failed to send email. Err: %s", err)
 	}
 
 	return err
