@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
 	"log"
 	"net/smtp"
 	"os"
@@ -17,9 +19,15 @@ type Message struct {
 	Body       string
 }
 
+type EmailTemplate struct {
+	Recipient string
+}
+
+
 func main() {
 	recipients := []string{"hjackson277@gmail.com"}
 	err := sendEmail(recipients)
+
 	if err != nil {
 		log.Fatalf("Could not send mail. Err: %s", err)
 	}
@@ -40,24 +48,48 @@ func sendEmail(recipients []string) error {
 	senderEmail := os.Getenv("SENDER_EMAIL")
 	senderPassword := os.Getenv("SENDER_PASSWORD")
 
-	auth := smtp.PlainAuth("", senderEmail, senderPassword, "smtp.gmail.com")
+	auth := smtp.PlainAuth(
+        "", 
+        senderEmail, 
+        senderPassword, 
+        "smtp.gmail.com",
+    )
 
-	subject := "New order!"
-	body := "<html><body><h1>Check out your new order!</h1></body></html>"
+	body := new(bytes.Buffer)
+	tmpl, err := template.ParseFiles("./templates/new-order.html")
+
+	if err != nil {
+        log.Fatalf("Failed to parse email template. Err: %s", err)
+	}
+
+	err = tmpl.Execute(
+        body, 
+        EmailTemplate{Recipient: recipients[0]},
+    )
+
+	if err != nil {
+        log.Fatalf("Failed to execute email template. Err: %s", err)
+	}
 
 	request := Message{
 		Sender:     senderEmail,
 		Recipients: recipients,
-		Subject:    subject,
-		Body:       body,
+		Subject:    "New order!",
+		Body:       body.String(),
 	}
 
 	msg := BuildMessage(request)
 
-	err = smtp.SendMail("smtp.gmail.com:587", auth, senderEmail, recipients, []byte(msg))
+	err = smtp.SendMail(
+		"smtp.gmail.com:587",
+		auth,
+		senderEmail,
+		recipients,
+		[]byte(msg),
+	)
 
 	if err != nil {
-		log.Fatal(err)
+        log.Fatalf("Failed to send email. Err: %s", err)
 	}
 
 	return err
