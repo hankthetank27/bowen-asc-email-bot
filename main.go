@@ -1,16 +1,16 @@
 package main
 
 import (
+    "os"
+    "io"
+    "fmt"
+    "log"
 	"bytes"
 	"errors"
-	"fmt"
-	"html/template"
-	"io"
-	"log"
+    "strings"
 	"net/http"
 	"net/smtp"
-	"os"
-	"strings"
+    "html/template"
 
 	"github.com/joho/godotenv"
 )
@@ -49,7 +49,10 @@ func handleEmailRequest(w http.ResponseWriter, r *http.Request) {
 	hasRecipients := r.URL.Query().Has("recipients")
 
 	if !hasRecipients {
-		io.WriteString(w, "No recipients")
+        errMsg := "No recipients specified\n"
+        log.Print(errMsg)
+        w.WriteHeader(http.StatusPreconditionFailed)
+		io.WriteString(w, errMsg)
 		return
 	}
 
@@ -60,15 +63,19 @@ func handleEmailRequest(w http.ResponseWriter, r *http.Request) {
 	err := sendEmail(recipients)
 
 	if err != nil {
-		log.Printf("Could not send mail. Err: %s", err)
+		log.Printf("Error sending mail. Err: %s", err)
+        w.WriteHeader(http.StatusInternalServerError)
+        io.WriteString(w, "Unable to send mail\n")
+        return
 	}
 
-	fmt.Printf(
-		"Email successfully sent to recipients: %s\n",
+    successMsg := fmt.Sprintf(
+        "Email successfully sent to recipients: %s\n",
 		strings.Join(recipients, ", "),
-	)
-
-	io.WriteString(w, "Email Sent")
+    )
+    fmt.Print(successMsg)
+    w.WriteHeader(http.StatusOK)
+	io.WriteString(w, successMsg)
 }
 
 func sendEmail(recipients []string) error {
@@ -76,6 +83,7 @@ func sendEmail(recipients []string) error {
 
 	if err != nil {
 		log.Fatalf("Error loading .env file. Err: %s", err)
+        return err
 	}
 
 	senderEmail := os.Getenv("SENDER_EMAIL")
@@ -93,6 +101,7 @@ func sendEmail(recipients []string) error {
 
 	if err != nil {
 		log.Printf("Failed to parse email template. Err: %s", err)
+        return err
 	}
 
 	err = tmpl.Execute(
@@ -102,6 +111,7 @@ func sendEmail(recipients []string) error {
 
 	if err != nil {
 		log.Printf("Failed to execute email template. Err: %s", err)
+        return err
 	}
 
 	request := Message{
@@ -125,7 +135,7 @@ func sendEmail(recipients []string) error {
 		log.Printf("Failed to send email. Err: %s", err)
 	}
 
-	return err
+    return err
 }
 
 func BuildMessage(message Message) string {
