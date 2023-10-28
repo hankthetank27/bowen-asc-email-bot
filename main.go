@@ -1,16 +1,16 @@
 package main
 
 import (
-    "os"
-    "io"
-    "fmt"
-    "log"
 	"bytes"
 	"errors"
-    "strings"
+	"fmt"
+	"html/template"
+	"io"
+	"log"
 	"net/http"
 	"net/smtp"
-    "html/template"
+	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -49,9 +49,9 @@ func handleEmailRequest(w http.ResponseWriter, r *http.Request) {
 	hasRecipients := r.URL.Query().Has("recipients")
 
 	if !hasRecipients {
-        errMsg := "No recipients specified\n"
-        log.Print(errMsg)
-        w.WriteHeader(http.StatusPreconditionFailed)
+		errMsg := "No recipients specified\n"
+		log.Print(errMsg)
+		w.WriteHeader(http.StatusPreconditionFailed)
 		io.WriteString(w, errMsg)
 		return
 	}
@@ -64,17 +64,17 @@ func handleEmailRequest(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Error sending mail. Err: %s", err)
-        w.WriteHeader(http.StatusInternalServerError)
-        io.WriteString(w, "Unable to send mail\n")
-        return
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Unable to send mail\n")
+		return
 	}
 
-    successMsg := fmt.Sprintf(
-        "Email successfully sent to recipients: %s\n",
+	successMsg := fmt.Sprintf(
+		"Email successfully sent to recipients: %s\n",
 		strings.Join(recipients, ", "),
-    )
-    fmt.Print(successMsg)
-    w.WriteHeader(http.StatusOK)
+	)
+	fmt.Print(successMsg)
+	w.WriteHeader(http.StatusOK)
 	io.WriteString(w, successMsg)
 }
 
@@ -83,7 +83,7 @@ func sendEmail(recipients []string) error {
 
 	if err != nil {
 		log.Fatalf("Error loading .env file. Err: %s", err)
-        return err
+		return err
 	}
 
 	senderEmail := os.Getenv("SENDER_EMAIL")
@@ -101,7 +101,7 @@ func sendEmail(recipients []string) error {
 
 	if err != nil {
 		log.Printf("Failed to parse email template. Err: %s", err)
-        return err
+		return err
 	}
 
 	err = tmpl.Execute(
@@ -111,7 +111,7 @@ func sendEmail(recipients []string) error {
 
 	if err != nil {
 		log.Printf("Failed to execute email template. Err: %s", err)
-        return err
+		return err
 	}
 
 	request := Message{
@@ -135,7 +135,7 @@ func sendEmail(recipients []string) error {
 		log.Printf("Failed to send email. Err: %s", err)
 	}
 
-    return err
+	return err
 }
 
 func BuildMessage(message Message) string {
