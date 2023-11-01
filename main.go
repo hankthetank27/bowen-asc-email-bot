@@ -44,30 +44,32 @@ type Purchase struct {
 }
 
 type SqSpaceOrders struct {
-	Result []struct {
-		Id             string `json:"id"`
-		CustomerEmail  string `json:"customerEmail"`
-		OrderNumber    string `json:"orderNumber"`
-		BillingAddress struct {
-			FirstName   string `json:"firstName"`
-			LastName    string `json:"lastName"`
-			Address1    string `json:"address1"`
-			Address2    string `json:"address2"`
-			City        string `json:"city"`
-			State       string `json:"state"`
-			CountryCode string `json:"countryCode"`
-			PostalCode  string `json:"postalCode"`
-			Phone       string `json:"phone"`
-		} `json:"billingAddress"`
-		LineItems []struct {
-			ProductID      string `json:"productId"`
-			ProductName    string `json:"productName"`
-			Customizations *[]struct {
-				Label string `json:"label"`
-				Value string `json:"value"`
-			} `json:"customizations"`
-		} `json:"LineItems"`
-	} `json:"result"`
+	Orders []SqSpaceOrder `json:"result"`
+}
+
+type SqSpaceOrder struct {
+	Id             string `json:"id"`
+	CustomerEmail  string `json:"customerEmail"`
+	OrderNumber    string `json:"orderNumber"`
+	BillingAddress struct {
+		FirstName   string `json:"firstName"`
+		LastName    string `json:"lastName"`
+		Address1    string `json:"address1"`
+		Address2    string `json:"address2"`
+		City        string `json:"city"`
+		State       string `json:"state"`
+		CountryCode string `json:"countryCode"`
+		PostalCode  string `json:"postalCode"`
+		Phone       string `json:"phone"`
+	} `json:"billingAddress"`
+	LineItems []struct {
+		ProductID      string `json:"productId"`
+		ProductName    string `json:"productName"`
+		Customizations *[]struct {
+			Label string `json:"label"`
+			Value string `json:"value"`
+		} `json:"customizations"`
+	} `json:"LineItems"`
 }
 
 const PORT = 3000
@@ -191,31 +193,45 @@ func validatedSqSpaceOrder(
 			return err
 		}
 
-		for _, result := range data.Result {
-			if result.CustomerEmail == customerEmailAddress && result.OrderNumber == orderId {
-				locals.OrderId = result.Id
-				locals.CustomerInfo.FirstName = result.BillingAddress.FirstName
-				locals.CustomerInfo.LastName = result.BillingAddress.LastName
-				locals.CustomerInfo.Email = result.CustomerEmail
-				for _, purchase := range result.LineItems {
-					if purchase.Customizations != nil {
-						for _, c := range *purchase.Customizations {
-							if c.Label == "Subject Property Address" {
-								item := Purchase{
-									PurchaseType:   purchase.ProductName,
-									ProductID:      purchase.ProductID,
-									SubjectAddress: c.Value,
-								}
-								locals.Purchases = append(locals.Purchases, item)
-								break
-							}
-						}
-					}
-
-				}
-				return err
+		var order *SqSpaceOrder
+		for _, res := range data.Orders {
+			if res.CustomerEmail == customerEmailAddress &&
+				res.OrderNumber == orderId {
+				order = &res
+				break
 			}
 		}
+
+		if order == nil {
+			errMsg := "Invalid order"
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, errMsg)
+			return errors.New(errMsg)
+		}
+
+        locals.OrderId = order.Id
+        locals.CustomerInfo.FirstName = order.BillingAddress.FirstName
+        locals.CustomerInfo.LastName = order.BillingAddress.LastName
+        locals.CustomerInfo.Email = order.CustomerEmail
+        for _, purchase := range order.LineItems {
+            if purchase.Customizations == nil {
+                continue
+            }
+            for _, c := range *purchase.Customizations {
+                if c.Label == "Subject Property Address" {
+                    item := Purchase{
+                        PurchaseType:   purchase.ProductName,
+                        ProductID:      purchase.ProductID,
+                        SubjectAddress: c.Value,
+                    }
+                    locals.Purchases = append(locals.Purchases, item)
+                    break
+                }
+            }
+        }
+
+		// NEEDS FALURE CASE
+
 	} else {
 		errMsg := fmt.Sprintf("Request failed with status code %d\n", resp.StatusCode)
 		log.Println(errMsg)
