@@ -16,7 +16,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Message struct {
+type Email struct {
 	Sender     string
 	Recipients []string
 	Subject    string
@@ -38,7 +38,7 @@ type NewOrderLocals struct {
 }
 
 type Purchase struct {
-	ProductID      string
+	ProductSKU     string
 	PurchaseType   string
 	SubjectAddress string
 }
@@ -63,7 +63,7 @@ type SqSpaceOrder struct {
 		Phone       string `json:"phone"`
 	} `json:"billingAddress"`
 	LineItems []struct {
-		ProductID      string `json:"productId"`
+		ProductSKU     string `json:"sku"`
 		ProductName    string `json:"productName"`
 		Customizations *[]struct {
 			Label string `json:"label"`
@@ -83,12 +83,15 @@ func main() {
 	}
 
 	http.HandleFunc("/newOrder", ChainMiddleware(
-		validatedSqSpaceOrder,
+		validateSqSpaceOrder,
 		handleEmailRequest,
 	))
 
 	err = http.ListenAndServe(
-		fmt.Sprintf(":%d", PORT),
+		func() string {
+			fmt.Printf("Listening on port %d\n", PORT)
+			return fmt.Sprintf(":%d", PORT)
+		}(),
 		nil,
 	)
 
@@ -123,30 +126,60 @@ func handleEmailRequest(
 	locals *NewOrderLocals,
 ) error {
 
-	fmt.Println(locals)
-
-	recipients := strings.Split("hjackson277@gmail.com", ",")
-
-	err := sendEmail(recipients)
-
-	if err != nil {
-		log.Printf("Error sending mail. Err: %s\n", err)
+	if len(locals.Purchases) == 0 {
+		errMsg := "Order has no valid purchases"
 		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Unable to send mail\n")
-		return err
+		io.WriteString(w, errMsg)
+		return errors.New(errMsg)
 	}
 
-	successMsg := fmt.Sprintf(
-		"Email successfully sent to recipients: %s\n",
-		strings.Join(recipients, ", "),
-	)
-	fmt.Print(successMsg)
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, successMsg)
-	return err
+    sentEmailCounter := 0
+
+	for _, purchase := range locals.Purchases {
+
+		recipients, err := ProduceRecipients(purchase)
+
+		if err != nil {
+			log.Printf(
+				"No valid recipients for purchase of product %s\n",
+				purchase.PurchaseType,
+			)
+			continue
+		}
+
+		err = sendEmail(recipients)
+
+		if err != nil {
+			log.Printf("Error sending mail. Err: %s\n", err)
+			continue
+		}
+
+		successMsg := fmt.Sprintf(
+			"Email successfully sent to recipients %s for purchase of %s\n",
+			strings.Join(recipients, ", "),
+			purchase.PurchaseType,
+		)
+		fmt.Print(successMsg)
+        sentEmailCounter++
+	}
+
+    if sentEmailCounter == 0 {
+        errMsg := "Failed to notify all recipients for purchases."
+        w.WriteHeader(http.StatusInternalServerError)
+        io.WriteString(w, errMsg)
+        return errors.New(errMsg)
+    } else if sentEmailCounter == len(locals.Purchases) {
+        w.WriteHeader(http.StatusOK)
+        io.WriteString(w, "Successfully notifed recipients for all purchases.")
+        return nil
+    } else {
+        w.WriteHeader(http.StatusMultiStatus)
+        io.WriteString(w, "Partialy failed. Could not notify all recipients for purchases.")
+        return nil
+    }
 }
 
-func validatedSqSpaceOrder(
+func validateSqSpaceOrder(
 	w http.ResponseWriter,
 	r *http.Request,
 	locals *NewOrderLocals,
@@ -158,7 +191,7 @@ func validatedSqSpaceOrder(
 	if !hasOrderId || !hasCustomerEmail {
 		errMsg := "No order specified\n"
 		log.Print(errMsg)
-		w.WriteHeader(http.StatusPreconditionFailed)
+		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, errMsg)
 		return errors.New(errMsg)
 	}
@@ -209,35 +242,33 @@ func validatedSqSpaceOrder(
 			return errors.New(errMsg)
 		}
 
-        locals.OrderId = order.Id
-        locals.CustomerInfo.FirstName = order.BillingAddress.FirstName
-        locals.CustomerInfo.LastName = order.BillingAddress.LastName
-        locals.CustomerInfo.Email = order.CustomerEmail
-        for _, purchase := range order.LineItems {
-            if purchase.Customizations == nil {
-                continue
-            }
-            for _, c := range *purchase.Customizations {
-                if c.Label == "Subject Property Address" {
-                    item := Purchase{
-                        PurchaseType:   purchase.ProductName,
-                        ProductID:      purchase.ProductID,
-                        SubjectAddress: c.Value,
-                    }
-                    locals.Purchases = append(locals.Purchases, item)
-                    break
-                }
-            }
-        }
-
-		// NEEDS FALURE CASE
-
+		locals.OrderId = order.Id
+		locals.CustomerInfo.FirstName = order.BillingAddress.FirstName
+		locals.CustomerInfo.LastName = order.BillingAddress.LastName
+		locals.CustomerInfo.Email = order.CustomerEmail
+		for _, purchase := range order.LineItems {
+			item := Purchase{
+				PurchaseType: purchase.ProductName,
+				ProductSKU:   purchase.ProductSKU,
+			}
+			if purchase.Customizations != nil {
+				for _, c := range *purchase.Customizations {
+					if c.Label == "Subject Property Address" {
+						item.SubjectAddress = c.Value
+						break
+					}
+				}
+			}
+			locals.Purchases = append(locals.Purchases, item)
+		}
 	} else {
-		errMsg := fmt.Sprintf("Request failed with status code %d\n", resp.StatusCode)
+		errMsg := fmt.Sprintf(
+            "Request failed with status code %d\n",
+            resp.StatusCode,
+        )
 		log.Println(errMsg)
 		return errors.New(errMsg)
 	}
-
 	return err
 }
 
@@ -245,6 +276,12 @@ func sendEmail(recipients []string) error {
 
 	senderEmail := os.Getenv("SENDER_EMAIL")
 	senderPassword := os.Getenv("SENDER_PASSWORD")
+
+	if senderEmail == "" || senderPassword == "" {
+		errMsg := "Sender email or password does not exist"
+		log.Println(errMsg)
+		return errors.New(errMsg)
+	}
 
 	auth := smtp.PlainAuth(
 		"",
@@ -271,7 +308,7 @@ func sendEmail(recipients []string) error {
 		return err
 	}
 
-	request := Message{
+	request := Email{
 		Sender:     senderEmail,
 		Recipients: recipients,
 		Subject:    "New order!",
@@ -295,12 +332,34 @@ func sendEmail(recipients []string) error {
 	return err
 }
 
-func BuildMessage(message Message) string {
+func BuildMessage(message Email) string {
 	msg := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\r\n"
 	msg += fmt.Sprintf("From: %s\r\n", message.Sender)
 	msg += fmt.Sprintf("To: %s\r\n", strings.Join(message.Recipients, ";"))
 	msg += fmt.Sprintf("Subject: %s\r\n", message.Subject)
 	msg += fmt.Sprintf("\r\n%s\r\n", message.Body)
-
 	return msg
+}
+
+func ProduceRecipients(purchase Purchase) ([]string, error) {
+	inEdRecp := os.Getenv("IN_ED_RECP")
+	outsideEdRecp := os.Getenv("OUTSIDE_ED_RECP")
+
+	if inEdRecp == "" || outsideEdRecp == "" {
+		errMsg := "Env variables for recipients do not exist"
+		log.Println(errMsg)
+		return nil, errors.New(errMsg)
+	}
+
+	// Residential Property Appraisal In Edmonton
+	if purchase.ProductSKU == "SQ5929745" {
+		return []string{inEdRecp}, nil
+	}
+
+	// Residential Property Appraisal Outside Edmonton
+	if purchase.ProductSKU == "SQ8618609" {
+		return []string{outsideEdRecp}, nil
+	}
+
+	return []string{}, errors.New("No valid recipients found")
 }
