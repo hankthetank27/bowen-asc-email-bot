@@ -4,6 +4,7 @@ import (
 	"email_service/controllers"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 
@@ -52,7 +53,9 @@ func ChainMiddleware(
 		for _, middleware := range middlewares {
 			err := middleware(w, r, &locals)
 			if err != nil {
-				return
+                w.WriteHeader(http.StatusInternalServerError)
+                io.WriteString(w, err.Error())
+				return 
 			}
 		}
 	})

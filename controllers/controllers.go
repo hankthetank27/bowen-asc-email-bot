@@ -14,79 +14,20 @@ import (
 	"strings"
 )
 
-func HandleEmailRequest(
-	w http.ResponseWriter,
-	r *http.Request,
-	locals *NewOrderLocals,
-) error {
-
-	if len(locals.Purchases) == 0 {
-		errMsg := "Order has no valid purchases"
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, errMsg)
-		return errors.New(errMsg)
-	}
-
-	sentEmailCounter := 0
-
-	for _, purchase := range locals.Purchases {
-
-		recipients, err := produceRecipients(purchase)
-
-		if err != nil {
-			log.Printf(
-				"No valid recipients for purchase of product %s\n",
-				purchase.PurchaseType,
-			)
-			continue
-		}
-
-		err = sendEmail(recipients)
-
-		if err != nil {
-			log.Printf("Error sending mail. Err: %s\n", err)
-			continue
-		}
-
-		successMsg := fmt.Sprintf(
-			"Email successfully sent to recipients %s for purchase of %s\n",
-			strings.Join(recipients, ", "),
-			purchase.PurchaseType,
-		)
-		fmt.Print(successMsg)
-		sentEmailCounter++
-	}
-
-	if sentEmailCounter == 0 {
-		errMsg := "Failed to notify all recipients for purchases."
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, errMsg)
-		return errors.New(errMsg)
-	} else if sentEmailCounter == len(locals.Purchases) {
-		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "Successfully notifed recipients for all purchases.")
-		return nil
-	} else {
-		w.WriteHeader(http.StatusMultiStatus)
-		io.WriteString(w, "Partialy failed. Could not notify all recipients for purchases.")
-		return nil
-	}
-}
-
 func ValidateSqSpaceOrder(
 	w http.ResponseWriter,
 	r *http.Request,
 	locals *NewOrderLocals,
 ) error {
 
-	hasOrderId := r.URL.Query().Has("orderId")
+    genericErr := errors.New("Error validating order")
+
+	hasOrderNum := r.URL.Query().Has("orderId")
 	hasCustomerEmail := r.URL.Query().Has("customerEmailAddress")
 
-	if !hasOrderId || !hasCustomerEmail {
+	if !hasOrderNum || !hasCustomerEmail {
 		errMsg := "No order specified\n"
 		log.Print(errMsg)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, errMsg)
 		return errors.New(errMsg)
 	}
 
@@ -98,32 +39,32 @@ func ValidateSqSpaceOrder(
 	req, err := http.NewRequest("GET", reqUrl, nil)
 	if err != nil {
 		log.Println("Error creating request:", err)
-		return err
+		return genericErr
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", SqSpaceAPIKey))
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Error making request to Squarespace:", err)
-		return err
+		return genericErr
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		orderId := r.URL.Query().Get("orderId")
+		orderNum := r.URL.Query().Get("orderId")
 		customerEmailAddress := r.URL.Query().Get("customerEmailAddress")
 
 		var data SqSpaceOrders
 		decoder := json.NewDecoder(resp.Body)
 		if err := decoder.Decode(&data); err != nil {
 			log.Println("Error parsing JSON:", err)
-			return err
+			return genericErr
 		}
 
 		var order *SqSpaceOrder
 		for _, res := range data.Orders {
 			if res.CustomerEmail == customerEmailAddress &&
-				res.OrderNumber == orderId {
+				res.OrderNumber == orderNum {
 				order = &res
 				break
 			}
@@ -131,14 +72,15 @@ func ValidateSqSpaceOrder(
 
 		if order == nil {
 			errMsg := "Invalid order"
-			w.WriteHeader(http.StatusInternalServerError)
-			io.WriteString(w, errMsg)
+            fmt.Println(errMsg)
 			return errors.New(errMsg)
 		}
 
+		locals.OrderNumber = orderNum
 		locals.OrderId = order.Id
 		locals.CustomerInfo.FirstName = order.BillingAddress.FirstName
 		locals.CustomerInfo.LastName = order.BillingAddress.LastName
+		locals.CustomerInfo.Phone = order.BillingAddress.Phone
 		locals.CustomerInfo.Email = order.CustomerEmail
 		for _, purchase := range order.LineItems {
 			item := Purchase{
@@ -157,33 +99,97 @@ func ValidateSqSpaceOrder(
 		}
 	} else {
 		errMsg := fmt.Sprintf(
-			"Request failed with status code %d\n",
+			"Request to Squarespace failed with status code %d\n",
 			resp.StatusCode,
 		)
 		log.Println(errMsg)
-		return errors.New(errMsg)
+		return genericErr
 	}
 	return err
 }
 
-func sendEmail(recipients []string) error {
+func HandleEmailRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	locals *NewOrderLocals,
+) error {
+
+	if len(locals.Purchases) == 0 {
+		errMsg := "Order has no valid purchases"
+        log.Println(errMsg)
+		return errors.New(errMsg)
+	}
+
+	sentEmailCounter := 0
+
+	for _, purchase := range locals.Purchases {
+
+		recipients, err := produceRecipients(purchase)
+
+		if err != nil {
+			log.Printf(
+				"No valid recipients for purchase of product %s\n",
+				purchase.PurchaseType,
+			)
+			continue
+		}
+
+		err = sendEmail(
+			recipients,
+			locals,
+			purchase,
+		)
+
+		if err != nil {
+			log.Printf("Error sending mail. Err: %s\n", err)
+			continue
+		}
+
+		successMsg := fmt.Sprintf(
+			"Email successfully sent to recipients %s for purchase of %s\n",
+			strings.Join(recipients, ", "),
+			purchase.PurchaseType,
+		)
+		fmt.Print(successMsg)
+		sentEmailCounter++
+	}
+
+	if sentEmailCounter == 0 {
+		return errors.New("Failed to notify all recipients for purchases.")
+	} else if sentEmailCounter == len(locals.Purchases) {
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, "Successfully notifed recipients for all purchases.")
+		return nil
+	} else {
+		w.WriteHeader(http.StatusMultiStatus)
+		io.WriteString(w, "Partialy failed. Could not notify all recipients for purchases.")
+		return nil
+	}
+}
+
+func sendEmail(
+	recipients []string,
+	locals *NewOrderLocals,
+	purchase Purchase,
+) error {
 
 	senderEmail := os.Getenv("SENDER_EMAIL")
 	senderPassword := os.Getenv("SENDER_PASSWORD")
+    smtpServer := os.Getenv("SMTP_SERVER")
 
-	if senderEmail == "" || senderPassword == "" {
+	if senderEmail == "" || senderPassword == ""{
 		errMsg := "Sender email or password does not exist"
 		log.Println(errMsg)
 		return errors.New(errMsg)
 	}
 
-	auth := smtp.PlainAuth(
-		"",
-		senderEmail,
-		senderPassword,
-		"smtp.gmail.com",
-	)
+    if smtpServer == "" {
+        errMsg := "STMP server name does not exist"
+		log.Println(errMsg)
+		return errors.New(errMsg)
+    }
 
+	auth := LoginAuth(senderEmail, senderPassword)
 	body := new(bytes.Buffer)
 	tmpl, err := template.ParseFiles("./templates/new-order.html")
 
@@ -194,7 +200,10 @@ func sendEmail(recipients []string) error {
 
 	err = tmpl.Execute(
 		body,
-		EmailTemplate{Recipient: "noob"},
+		EmailTemplate{
+			Locals:   locals,
+			Purchase: purchase,
+		},
 	)
 
 	if err != nil {
@@ -205,14 +214,14 @@ func sendEmail(recipients []string) error {
 	request := Email{
 		Sender:     senderEmail,
 		Recipients: recipients,
-		Subject:    "New order!",
+		Subject:    fmt.Sprintf("New Order: %s\n", purchase.PurchaseType),
 		Body:       body.String(),
 	}
 
 	msg := buildMessage(request)
 
 	err = smtp.SendMail(
-		"smtp.gmail.com:587",
+		fmt.Sprintf("%s:587", smtpServer),
 		auth,
 		senderEmail,
 		recipients,
@@ -256,4 +265,30 @@ func produceRecipients(purchase Purchase) ([]string, error) {
 	}
 
 	return []string{}, errors.New("No valid recipients found")
+}
+
+type loginAuth struct {
+  username, password string
+}
+
+func LoginAuth(username, password string) smtp.Auth {
+	return &loginAuth{username, password}
+}
+
+func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	return "LOGIN", []byte{}, nil
+}
+
+func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if more {
+		switch string(fromServer) {
+		case "Username:":
+			return []byte(a.username), nil
+		case "Password:":
+			return []byte(a.password), nil
+		default:
+			return nil, errors.New("Unkown fromServer")
+		}
+	}
+	return nil, nil
 }

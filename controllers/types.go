@@ -8,15 +8,18 @@ type Email struct {
 }
 
 type EmailTemplate struct {
-	Recipient string
+	Locals   *NewOrderLocals
+	Purchase Purchase
 }
 
 type NewOrderLocals struct {
+	OrderNumber  string
 	OrderId      string
 	CustomerInfo struct {
 		FirstName string
 		LastName  string
 		Email     string
+		Phone     string
 	}
 	Purchases []Purchase
 }

@@ -1,6 +1,14 @@
-<div>
-    <h1>Dear {{ .Recipient }}, You have a new order!</h1>
-    <p>Details coming soon...</p>
-    <p>hehehe</p>
+<div class="mainContainer">
+    <h2>New Order Placed: {{ .Purchase.PurchaseType }}.</h2>
+    <div class="orderDetailsContainer">
+        <h3>Order Details:</h3>
+        <p>Order number: {{ .Locals.OrderNumber }}
+        <p>Customer name: {{ .Locals.CustomerInfo.FirstName }} {{ .Locals.CustomerInfo.LastName }}</p>
+        <p>Customer email: {{ .Locals.CustomerInfo.Email }}</p>
+        <p>Customer phone: {{ .Locals.CustomerInfo.Phone }}</p>
+        {{ if .Purchase.SubjectAddress }}
+        <p>Subject address: {{ .Purchase.SubjectAddress }}</p>
+        {{ end }}
+    </div>
 </div>
 
