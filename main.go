@@ -1,11 +1,11 @@
 package main
 
 import (
+	"email_service/controllers"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
-    "email_service/controllers"
 
 	"github.com/joho/godotenv"
 )
@@ -57,4 +57,3 @@ func ChainMiddleware(
 		}
 	})
 }
-
