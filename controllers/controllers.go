@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,11 @@ import (
 	"net/smtp"
 	"os"
 	"strings"
+
+	"go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/mongo"
 )
+
 
 func ValidateSqSpaceOrder(
 	w http.ResponseWriter,
@@ -20,7 +25,7 @@ func ValidateSqSpaceOrder(
 	locals *NewOrderLocals,
 ) error {
 
-    genericErr := errors.New("Error validating order")
+	genericErr := errors.New("Error validating order")
 
 	hasOrderNum := r.URL.Query().Has("orderId")
 	hasCustomerEmail := r.URL.Query().Has("customerEmailAddress")
@@ -31,6 +36,8 @@ func ValidateSqSpaceOrder(
 		return errors.New(errMsg)
 	}
 
+	orderNum := r.URL.Query().Get("orderId")
+	customerEmailAddress := r.URL.Query().Get("customerEmailAddress")
 	SqSpaceAPIKey := os.Getenv("SQSPACE_API_KEY")
 	reqUrl := "https://api.squarespace.com/1.0/commerce/orders/"
 
@@ -51,8 +58,6 @@ func ValidateSqSpaceOrder(
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		orderNum := r.URL.Query().Get("orderId")
-		customerEmailAddress := r.URL.Query().Get("customerEmailAddress")
 
 		var data SqSpaceOrders
 		decoder := json.NewDecoder(resp.Body)
@@ -72,9 +77,21 @@ func ValidateSqSpaceOrder(
 
 		if order == nil {
 			errMsg := "Invalid order"
-            fmt.Println(errMsg)
+			fmt.Println(errMsg)
 			return errors.New(errMsg)
 		}
+
+		var result bson.M
+		err = locals.OrdersDB.FindOne(
+            context.TODO(), 
+            bson.D{ {"order-id", order.Id} },
+        ).Decode(&result)
+        
+        if err != mongo.ErrNoDocuments {
+            errMsg := "Order entry already proccessed"
+            log.Println(errMsg + ": " + order.Id)
+            return errors.New(errMsg)
+        }
 
 		locals.OrderNumber = orderNum
 		locals.OrderId = order.Id
@@ -105,8 +122,9 @@ func ValidateSqSpaceOrder(
 		log.Println(errMsg)
 		return genericErr
 	}
-	return err
+	return nil
 }
+
 
 func HandleEmailRequest(
 	w http.ResponseWriter,
@@ -116,7 +134,7 @@ func HandleEmailRequest(
 
 	if len(locals.Purchases) == 0 {
 		errMsg := "Order has no valid purchases"
-        log.Println(errMsg)
+		log.Println(errMsg)
 		return errors.New(errMsg)
 	}
 
@@ -157,15 +175,37 @@ func HandleEmailRequest(
 	if sentEmailCounter == 0 {
 		return errors.New("Failed to notify all recipients for purchases.")
 	} else if sentEmailCounter == len(locals.Purchases) {
+        if err := registerOrderProcessed(locals); err != nil {
+            errMsg := "Recipients emailed but could not log order."
+            log.Println(errMsg)
+            return errors.New(errMsg)
+        }
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "Successfully notifed recipients for all purchases.")
 		return nil
 	} else {
+        if err := registerOrderProcessed(locals); err != nil {
+            errMsg := "Recipients partialy emailed but could not log order."
+            log.Println(errMsg)
+            return errors.New(errMsg)
+        }
 		w.WriteHeader(http.StatusMultiStatus)
 		io.WriteString(w, "Partialy failed. Could not notify all recipients for purchases.")
 		return nil
 	}
 }
+
+
+func registerOrderProcessed(
+	locals *NewOrderLocals,
+) error {
+    _, err := locals.OrdersDB.InsertOne(
+            context.TODO(),
+            bson.D{ {"order-id", locals.OrderId} },
+        )
+    return err
+}
+
 
 func sendEmail(
 	recipients []string,
@@ -175,19 +215,19 @@ func sendEmail(
 
 	senderEmail := os.Getenv("SENDER_EMAIL")
 	senderPassword := os.Getenv("SENDER_PASSWORD")
-    smtpServer := os.Getenv("SMTP_SERVER")
+	smtpServer := os.Getenv("SMTP_SERVER")
 
-	if senderEmail == "" || senderPassword == ""{
+	if senderEmail == "" || senderPassword == "" {
 		errMsg := "Sender email or password does not exist"
 		log.Println(errMsg)
 		return errors.New(errMsg)
 	}
 
-    if smtpServer == "" {
-        errMsg := "STMP server name does not exist"
+	if smtpServer == "" {
+		errMsg := "STMP server name does not exist"
 		log.Println(errMsg)
 		return errors.New(errMsg)
-    }
+	}
 
 	auth := LoginAuth(senderEmail, senderPassword)
 	body := new(bytes.Buffer)
@@ -235,6 +275,7 @@ func sendEmail(
 	return err
 }
 
+
 func buildMessage(message Email) string {
 	msg := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\r\n"
 	msg += fmt.Sprintf("From: %s\r\n", message.Sender)
@@ -243,6 +284,7 @@ func buildMessage(message Email) string {
 	msg += fmt.Sprintf("\r\n%s\r\n", message.Body)
 	return msg
 }
+
 
 func produceRecipients(purchase Purchase) ([]string, error) {
 	inEdRecp := os.Getenv("IN_ED_RECP")
@@ -267,17 +309,20 @@ func produceRecipients(purchase Purchase) ([]string, error) {
 	return []string{}, errors.New("No valid recipients found")
 }
 
+
 type loginAuth struct {
-  username, password string
+	username, password string
 }
 
 func LoginAuth(username, password string) smtp.Auth {
 	return &loginAuth{username, password}
 }
 
+
 func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 	return "LOGIN", []byte{}, nil
 }
+
 
 func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 	if more {

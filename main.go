@@ -1,32 +1,57 @@
 package main
 
 import (
-	"email_service/controllers"
-	"errors"
-	"fmt"
-	"io"
-	"log"
-	"net/http"
+    "email_service/controllers"
+    "errors"
+    "fmt"
+    "context"
+    "io"
+    "log"
+    "os"
+    "net/http"
 
-	"github.com/joho/godotenv"
+    "github.com/joho/godotenv"
+    "go.mongodb.org/mongo-driver/mongo"
+    "go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const PORT = 3000
 
 func main() {
 
-	err := godotenv.Load()
-
-	if err != nil {
+	if err := godotenv.Load(); err != nil {
 		log.Fatalf("Error loading .env file. Err: %s\n", err)
+    }
+
+    uri := os.Getenv("MONGO_URI")
+	if uri == "" {
+		log.Fatal("You must set your 'MONGODB_URI' environment variable.") 
+	}
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(uri))
+	if err != nil {
+		panic(err)
 	}
 
+	defer func() {
+		if err := client.Disconnect(context.TODO()); err != nil {
+			panic(err)
+		}
+	}()
+
 	http.HandleFunc("/newOrder", ChainMiddleware(
+        func(
+            w http.ResponseWriter,
+            r *http.Request,
+            locals *controllers.NewOrderLocals,
+        ) error {
+            locals.OrdersDB = client.Database("bowen-asc-email-bot").Collection("orders")
+            return nil
+        },
 		controllers.ValidateSqSpaceOrder,
 		controllers.HandleEmailRequest,
 	))
 
-	err = http.ListenAndServe(
+    err = http.ListenAndServe(
 		func() string {
 			fmt.Printf("Listening on port %d\n", PORT)
 			return fmt.Sprintf(":%d", PORT)
@@ -53,10 +78,11 @@ func ChainMiddleware(
 		for _, middleware := range middlewares {
 			err := middleware(w, r, &locals)
 			if err != nil {
-                w.WriteHeader(http.StatusInternalServerError)
-                io.WriteString(w, err.Error())
-				return 
+				w.WriteHeader(http.StatusInternalServerError)
+				io.WriteString(w, err.Error())
+				return
 			}
-		}
+        }
+        fmt.Println("Successfully processed and logged request")
 	})
 }

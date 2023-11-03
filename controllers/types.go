@@ -1,5 +1,7 @@
 package controllers
 
+import "go.mongodb.org/mongo-driver/mongo"
+
 type Email struct {
 	Sender     string
 	Recipients []string
@@ -22,6 +24,7 @@ type NewOrderLocals struct {
 		Phone     string
 	}
 	Purchases []Purchase
+	OrdersDB  *mongo.Collection
 }
 
 type Purchase struct {

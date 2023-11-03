@@ -1,3 +1,3 @@
 # Orders Email Bot
 
-Notify associates of new orders.
+Notifies associates of new orders.
