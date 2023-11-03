@@ -1,31 +1,29 @@
 package main
 
 import (
-    "email_service/controllers"
-    "errors"
-    "fmt"
-    "context"
-    "io"
-    "log"
-    "os"
-    "net/http"
+	"context"
+	"email_service/controllers"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
 
-    "github.com/joho/godotenv"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const PORT = 3000
 
 func main() {
 
-	if err := godotenv.Load(); err != nil {
-		log.Fatalf("Error loading .env file. Err: %s\n", err)
-    }
+	godotenv.Load()
 
-    uri := os.Getenv("MONGO_URI")
+	uri := os.Getenv("MONGO_URI")
 	if uri == "" {
-		log.Fatal("You must set your 'MONGODB_URI' environment variable.") 
+		log.Fatal("You must set your 'MONGODB_URI' environment variable.")
 	}
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(uri))
 	if err != nil {
@@ -39,19 +37,19 @@ func main() {
 	}()
 
 	http.HandleFunc("/newOrder", ChainMiddleware(
-        func(
-            w http.ResponseWriter,
-            r *http.Request,
-            locals *controllers.NewOrderLocals,
-        ) error {
-            locals.OrdersDB = client.Database("bowen-asc-email-bot").Collection("orders")
-            return nil
-        },
+		func(
+			w http.ResponseWriter,
+			r *http.Request,
+			locals *controllers.NewOrderLocals,
+		) error {
+			locals.OrdersDB = client.Database("bowen-asc-email-bot").Collection("orders")
+			return nil
+		},
 		controllers.ValidateSqSpaceOrder,
 		controllers.HandleEmailRequest,
 	))
 
-    err = http.ListenAndServe(
+	err = http.ListenAndServe(
 		func() string {
 			fmt.Printf("Listening on port %d\n", PORT)
 			return fmt.Sprintf(":%d", PORT)
@@ -82,7 +80,7 @@ func ChainMiddleware(
 				io.WriteString(w, err.Error())
 				return
 			}
-        }
-        fmt.Println("Successfully processed and logged request")
+		}
+		fmt.Println("Successfully processed and logged request")
 	})
 }
