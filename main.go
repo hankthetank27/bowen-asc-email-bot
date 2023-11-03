@@ -15,11 +15,15 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const PORT = 3000
 
 func main() {
 
 	godotenv.Load()
+    PORT := os.Getenv("$PORT")
+    if PORT == "" {
+        fmt.Println("Manually assigning port...")
+        PORT = "3000"
+    }
 
 	uri := os.Getenv("MONGO_URI")
 	if uri == "" {
@@ -51,8 +55,8 @@ func main() {
 
 	err = http.ListenAndServe(
 		func() string {
-			fmt.Printf("Listening on port %d\n", PORT)
-			return fmt.Sprintf(":%d", PORT)
+			fmt.Printf("Listening on port %s\n", PORT)
+			return fmt.Sprintf(":%s", PORT)
 		}(),
 		nil,
 	)
