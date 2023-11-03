@@ -20,7 +20,6 @@ func main() {
 
 	godotenv.Load()
     PORT := os.Getenv("$PORT")
-
     if PORT == "" {
         fmt.Println("Manually assigning port...")
         PORT = "3000"
