@@ -80,7 +80,7 @@ func ChainMiddleware(
 		for _, middleware := range middlewares {
 			err := middleware(w, r, &locals)
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+				w.WriteHeader(http.StatusBadRequest)
 				io.WriteString(w, err.Error())
 				return
 			}
