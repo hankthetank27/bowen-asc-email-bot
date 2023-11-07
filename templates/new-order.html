@@ -9,6 +9,6 @@
         {{ if .Purchase.SubjectAddress }}
         <p>Subject address: {{ .Purchase.SubjectAddress }}</p>
         {{ end }}
+        <p>Paid: ${{ .Purchase.PaidValue}} {{ .Purchase.Currency }}</p>
     </div>
 </div>
-

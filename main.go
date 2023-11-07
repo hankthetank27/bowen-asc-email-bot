@@ -15,15 +15,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-
 func main() {
 
 	godotenv.Load()
-    PORT := os.Getenv("$PORT")
-    if PORT == "" {
-        fmt.Println("Manually assigning port...")
-        PORT = "3000"
-    }
+	PORT := os.Getenv("$PORT")
+	if PORT == "" {
+		fmt.Println("Manually assigning port...")
+		PORT = "3000"
+	}
 
 	uri := os.Getenv("MONGO_URI")
 	if uri == "" {
@@ -40,7 +39,9 @@ func main() {
 		}
 	}()
 
-	http.HandleFunc("/newOrder", ChainMiddleware(
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/newOrder", ChainMiddleware(
 		func(
 			w http.ResponseWriter,
 			r *http.Request,
@@ -53,12 +54,14 @@ func main() {
 		controllers.HandleEmailRequest,
 	))
 
+	controllers.InitCleanup()
+
 	err = http.ListenAndServe(
 		func() string {
 			fmt.Printf("Listening on port %s\n", PORT)
 			return fmt.Sprintf(":%s", PORT)
 		}(),
-		nil,
+		controllers.Limit(mux),
 	)
 
 	if !errors.Is(err, http.ErrServerClosed) {

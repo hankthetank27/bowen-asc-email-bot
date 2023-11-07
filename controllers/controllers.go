@@ -102,6 +102,8 @@ func ValidateSqSpaceOrder(
 			item := Purchase{
 				PurchaseType: purchase.ProductName,
 				ProductSKU:   purchase.ProductSKU,
+				Currency:     purchase.UnitPricePaid.Currency,
+				PaidValue:    purchase.UnitPricePaid.Value,
 			}
 			if purchase.Customizations != nil {
 				for _, c := range *purchase.Customizations {

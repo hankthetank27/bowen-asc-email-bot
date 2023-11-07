@@ -5,6 +5,7 @@ go 1.21.3
 require (
 	github.com/joho/godotenv v1.5.1
 	go.mongodb.org/mongo-driver v1.12.1
+	golang.org/x/time v0.4.0
 )
 
 require (
