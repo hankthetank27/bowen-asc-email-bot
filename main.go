@@ -15,15 +15,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-
 func main() {
 
 	godotenv.Load()
-    PORT := os.Getenv("$PORT")
-    if PORT == "" {
-        fmt.Println("Manually assigning port...")
-        PORT = "3000"
-    }
+	PORT := os.Getenv("$PORT")
+	if PORT == "" {
+		fmt.Println("Manually assigning port...")
+		PORT = "3000"
+	}
 
 	uri := os.Getenv("MONGO_URI")
 	if uri == "" {

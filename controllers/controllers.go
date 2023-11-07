@@ -99,11 +99,11 @@ func ValidateSqSpaceOrder(
 		locals.CustomerInfo.Phone = order.BillingAddress.Phone
 		locals.CustomerInfo.Email = order.CustomerEmail
 		for _, purchase := range order.LineItems {
-			item := Purchase {
+			item := Purchase{
 				PurchaseType: purchase.ProductName,
 				ProductSKU:   purchase.ProductSKU,
-                Currency: purchase.UnitPricePaid.Currency,
-                PaidValue: purchase.UnitPricePaid.Value,
+				Currency:     purchase.UnitPricePaid.Currency,
+				PaidValue:    purchase.UnitPricePaid.Value,
 			}
 			if purchase.Customizations != nil {
 				for _, c := range *purchase.Customizations {
