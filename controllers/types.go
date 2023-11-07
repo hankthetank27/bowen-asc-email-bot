@@ -31,6 +31,8 @@ type Purchase struct {
 	ProductSKU     string
 	PurchaseType   string
 	SubjectAddress string
+	Currency       string
+	PaidValue      string
 }
 
 type SqSpaceOrders struct {
@@ -59,5 +61,9 @@ type SqSpaceOrder struct {
 			Label string `json:"label"`
 			Value string `json:"value"`
 		} `json:"customizations"`
+		UnitPricePaid struct {
+			Currency string `json:"currency"`
+			Value    string `json:"value"`
+		} `json:"unitPricePaid"`
 	} `json:"LineItems"`
 }
