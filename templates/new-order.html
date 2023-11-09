@@ -1,15 +1,20 @@
 <div class="mainContainer">
-    <h2>New Order Placed: {{ .Purchase.PurchaseType }}.</h2>
+    {{ if ("SQ5929745" | eq .Purchase.ProductSKU) }}
+        <h2>New Order Placed: Residential Property Appraisal - Edmonton</h2>
+    {{ else if ("SQ8618609" | eq .Purchase.ProductSKU) }}
+        <h2>New Order Placed: Residential Property - Edmonton GMA</h2>
+    {{ else }}
+        <h2>New Order Placed</h2>
+    {{ end }}
     <div class="orderDetailsContainer">
-        <h3>Order Details:</h3>
-        <p>Order number: {{ .Locals.OrderNumber }}
-        <p>Customer name: {{ .Locals.CustomerInfo.FirstName }} {{ .Locals.CustomerInfo.LastName }}</p>
-        <p>Customer email: {{ .Locals.CustomerInfo.Email }}</p>
-        <p>Customer phone: {{ .Locals.CustomerInfo.Phone }}</p>
+        <p>Order Number: {{ .Locals.OrderNumber }}
+        <p>Customer Name: {{ .Locals.CustomerInfo.FirstName }} {{ .Locals.CustomerInfo.LastName }}</p>
+        <p>Customer Email: {{ .Locals.CustomerInfo.Email }}</p>
+        <p>Customer Phone: {{ .Locals.CustomerInfo.Phone }}</p>
         {{ if .Purchase.SubjectAddress }}
-        <p>Subject address: {{ .Purchase.SubjectAddress }}</p>
+            <p>Subject Address: {{ .Purchase.SubjectAddress }}</p>
         {{ end }}
-        <p>Paid: ${{ .Purchase.PaidValue}} {{ .Purchase.Currency }}</p>
+            <p>Paid: ${{ .Purchase.PaidValue}} {{ .Purchase.Currency }}</p>
     </div>
 </div>
 
